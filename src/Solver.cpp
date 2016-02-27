@@ -18,7 +18,6 @@ Solution *Solver::getBestSolution() {
     return bestSolution;
 }
 
-
 void Solver::revertSwap(Job *j1, Job *j2, Machine *m, int oldReady) {
     vector<Resource*> resources = currentSolution->getResources();
     j1->releaseResources(*data, resources);
@@ -29,92 +28,85 @@ void Solver::revertSwap(Job *j1, Job *j2, Machine *m, int oldReady) {
     j2->schedule(*data, resources);
 }
 
-void Solver::localSearchStep() {
+void Solver::localSearchOnMachine(Machine *m) {
     long oldObjective =  currentSolution->getObjective();
     vector<Resource*> resources = currentSolution->getResources();
-    for(Machine * m : currentSolution->getMachines()) {
-        vector<Job*> scheduledJobs = m->getScheduledJobs();
-        for(int i = 0; i < scheduledJobs.size() - 1; ++i) {
-            scheduledJobs = m->getScheduledJobs();
-            Job *j1 = scheduledJobs[i];
-            Job *j2 = scheduledJobs[i+1];
-            int oldReady = j1->getReadyTime();
-            int oldEnd = j2->getEndTime();
-            int oldCost = j1->getCost(*data) + j2->getCost(*data);
-            j1->releaseResources(*data, resources);
-            j2->releaseResources(*data, resources);
-            // swap j1 and j2 and compute the new cost and end time
-            int readyTime = oldReady;
-            if( i > 0) {
-                // Remove old setup time with the previous job and add the new one
-                Job *prev = scheduledJobs[i-1];
-                readyTime -= data->getSetupTime(prev->getId(), j1->getId(), m->getId());
-                readyTime += data->getSetupTime(prev->getId(), j2->getId(), m->getId());
-            }
-            if( i < scheduledJobs.size() - 2) {
-                // Update oldEnd considering also the setup time
-                Job *next = scheduledJobs[i+2];
-                oldEnd = next->getReadyTime();
-            }
 
-            m->setReadyTime(readyTime);
-            currentSolution->swapJobs(j1, j2);
-            j2->schedule(*data, resources);
-            j1->schedule(*data, resources);
-            int newCost = j2->getCost(*data) + j1->getCost(*data);
-            int newEnd = m->getReadyTime(); // Ready time after j1 and j2 have been scheduled (includes setup time)
-            if((newCost > oldCost && newEnd > oldEnd) || (newCost == oldCost && newEnd > oldEnd)) {
-                // Bad move, turn back!
-                revertSwap(j1, j2, m, oldReady);
-                continue;
-            }
-            // To check if the move improves the solution we have to update all subsequent jobs
-            // that can start before their current ready time
-            for(int j = i + 2; j < scheduledJobs.size(); ++j) {
-                oldCost += scheduledJobs[j]->getCost(*data);
+    vector<Job*> scheduledJobs = m->getScheduledJobs();
+    for(int i = 0; i < scheduledJobs.size() - 1; ++i) {
+        scheduledJobs = m->getScheduledJobs();
+        Job *j1 = scheduledJobs[i];
+        Job *j2 = scheduledJobs[i+1];
+        int oldReady = j1->getReadyTime();
+        int oldEnd = j2->getEndTime();
+        int oldCost = j1->getCost(*data) + j2->getCost(*data);
+        j1->releaseResources(*data, resources);
+        j2->releaseResources(*data, resources);
+        // swap j1 and j2 and compute the new cost and end time
+        int readyTime = oldReady;
+        if( i > 0) {
+            // Remove old setup time with the previous job and add the new one
+            Job *prev = scheduledJobs[i-1];
+            readyTime -= data->getSetupTime(prev->getId(), j1->getId(), m->getId());
+            readyTime += data->getSetupTime(prev->getId(), j2->getId(), m->getId());
+        }
+        if( i < scheduledJobs.size() - 2) {
+            // Update oldEnd considering also the setup time
+            Job *next = scheduledJobs[i+2];
+            oldEnd = next->getReadyTime();
+        }
+
+        m->setReadyTime(readyTime);
+        currentSolution->swapJobs(j1, j2);
+        j2->schedule(*data, resources);
+        j1->schedule(*data, resources);
+        int newCost = j2->getCost(*data) + j1->getCost(*data);
+        int newEnd = j1->getEndTime(); // Ready time after j1 and j2 have been scheduled (includes setup time)
+        if((newCost > oldCost && newEnd > oldEnd) || (newCost == oldCost && newEnd > oldEnd)) {
+            // Bad move, turn back!
+            revertSwap(j1, j2, m, oldReady);
+            continue;
+        }
+        // To check if the move improves the solution we have to update all subsequent jobs
+        // that can start before their current ready time
+        for(int j = i + 2; j < scheduledJobs.size(); ++j) {
+            oldCost += scheduledJobs[j]->getCost(*data);
+            scheduledJobs[j]->releaseResources(*data, resources);
+            scheduledJobs[j]->schedule(*data, resources);
+            newCost += scheduledJobs[j]->getCost(*data);
+        }
+        if(newCost <= oldCost) {
+            // :) we improved our objective cost!
+
+            long objective = currentSolution->getObjective();
+            objective = objective - oldCost + newCost;
+            currentSolution->setObjective(objective);
+        } else {
+            // :( the move made the objective worse, we have to roll back!
+            for(int j = i; j < scheduledJobs.size(); ++j)
                 scheduledJobs[j]->releaseResources(*data, resources);
+            currentSolution->swapJobs(j1, j2);
+            m->setReadyTime(oldReady);
+            scheduledJobs = m->getScheduledJobs();
+            // We have also to revert the update all subsequent changed jobs
+            for(int j = i; j < scheduledJobs.size(); ++j)
                 scheduledJobs[j]->schedule(*data, resources);
-                newCost += scheduledJobs[j]->getCost(*data);
-            }
-            if(newCost <= oldCost) {
-                // :) we improved our objective cost!
-
-                long objective = currentSolution->getObjective();
-                objective = objective - oldCost + newCost;
-                if(objective < 0) {
-                    cout << "New objective is negative!!! " << endl;
-                    cout << "Old objective: " << currentSolution->getObjective() << endl;
-                    cout << "Objective: " << objective << endl;
-                    cout << "Old cost: " << oldCost << endl;
-                    cout << "New cost: " << newCost << endl;
-                    currentSolution->scheduleJobs();
-                    return;
-                }
-                currentSolution->setObjective(objective);
-            } else {
-                // :( the move made the objective worse, we have to roll back!
-                revertSwap(j1, j2, m, oldReady);
-                // We have also to revert the update all subsequent changed jobs
-                for(int k = i + 2; k < scheduledJobs.size(); ++k) {
-                    scheduledJobs[k]->releaseResources(*data, resources);
-                    scheduledJobs[k]->schedule(*data, resources);
-                }
-
-            }
         }
     }
-    cout << "Local search: from " << oldObjective << " to " << currentSolution->getObjective() << endl;
 }
 
 void Solver::localSearch() {
     long oldObjective = currentSolution->getObjective();
-    localSearchStep();
-    long newObjective = currentSolution->getObjective();
-    while(newObjective < oldObjective) {
+    long newObjective = oldObjective;
+    short counter = 0;
+    do {
         oldObjective = newObjective;
-        localSearchStep();
+        for(Machine * m : currentSolution->getMachines()) {
+            localSearchOnMachine(m);
+        }
         newObjective = currentSolution->getObjective();
-    }
+        // cout << "Local search: from " << oldObjective << " to " << currentSolution->getObjective() << endl;
+    } while(newObjective < oldObjective && ++counter < 1000);
 }
 
 void Solver::explorationStep() {
@@ -122,7 +114,7 @@ void Solver::explorationStep() {
     long newObjective = oldObjective;
     int nJobs = data->getNJobs();
     RandomUtil& rand = RandomUtil::getInstance();
-    cout << "oldObjective: "<< oldObjective << endl;
+    //cout << "Old Objective: "<< oldObjective << endl;
     for(int i = 0; i < nJobs / 2 ; ++i) {
         if(rand.randomDouble() > 0.5) {
            trySwapping();
@@ -131,7 +123,7 @@ void Solver::explorationStep() {
         }
         updateBestSolution(currentSolution);
     }
-    cout  << "newObjective: "<< oldObjective << endl;
+    //cout  << "New Objective: "<< oldObjective << endl;
 }
 
 bool Solver::acceptMove(long oldObjective, long newObjective) {
@@ -148,10 +140,8 @@ void Solver::updateTemp() {
 void Solver::updateBestSolution(Solution *s) {
     //s->scheduleJobs();
     if(s->getObjective() < bestSolution->getObjective()) {
-        cout << "Update best solution: from " << bestSolution->getObjective();
         delete bestSolution;
         bestSolution = new Solution(*s);
-        cout << " to: " << bestSolution->getObjective() << endl;
     }
 }
 
@@ -169,7 +159,7 @@ void Solver::trySwapping() {
     long newObjective = currentSolution->getObjective();
     if(acceptMove(oldObjective, newObjective)) {
         oldObjective = newObjective;
-        cout << "Job " << index1 << " swapped with job " << index2 << endl;
+        //cout << "Job " << index1 << " swapped with job " << index2 << endl;
     } else {
         // Turn back
         currentSolution->swapJobs(j1, j2);
@@ -202,8 +192,13 @@ void Solver::tryChangeMachine() {
     currentSolution->resetJobPositionInMachine(j);
     currentSolution->scheduleJobs();
     long newObjective = currentSolution->getObjective();
+    // Move the job in the right position inside the machine
+    do {
+        newObjective = currentSolution->getObjective();
+        localSearchOnMachine(j->getMachine());
+    } while(currentSolution->getObjective() < newObjective);
     if(acceptMove(oldObjective, newObjective)) {
-        cout << "Job " << j->getId() << " moved from machine " << oldMachineId << " to machine " << machineId << endl;
+        //cout << "Job " << j->getId() << " moved from machine " << oldMachineId << " to machine " << machineId << endl;
         oldObjective = newObjective;
     } else {
         j->setMachine(currentSolution->getMachines()[oldMachineId]);
@@ -217,5 +212,6 @@ void Solver::updateSolution() {
     localSearch();
     updateTemp();
     updateBestSolution(currentSolution);
-    cout << "Current Best solution: " << bestSolution->getObjective() << endl;
 }
+
+

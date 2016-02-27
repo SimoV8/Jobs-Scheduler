@@ -11,7 +11,7 @@
 #include "Job.h"
 #include "Resource.h"
 
-#define INIT_T 80.0
+#define INIT_T 120.0
 #define ALPHA 0.9
 
 class Solver {
@@ -26,15 +26,14 @@ private:
 
     void updateTemp();
     void updateBestSolution(Solution * s);
+    void localSearchOnMachine(Machine * m);
 
 public:
     Solver(DataContainer *dataContainer);
     Solution* getBestSolution();
 
-    void localSearchStep();
     void localSearch();
     void explorationStep();
-
     void updateSolution();
 
     void trySwapping();
