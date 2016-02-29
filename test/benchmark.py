@@ -58,7 +58,7 @@ def main():
                 out = solution.readlines()
                 line = out[0].split(';')
                 twt = int(line[1])
-                if twt < theBest:
+                if twt <= theBest:
                     theBest = twt
                     shutil.copyfile(os.path.join('output', solutionfile), os.path.join('best', solutionfile))
 

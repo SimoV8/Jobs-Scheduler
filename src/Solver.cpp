@@ -107,6 +107,7 @@ void Solver::localSearch() {
         newObjective = currentSolution->getObjective();
         // cout << "Local search: from " << oldObjective << " to " << currentSolution->getObjective() << endl;
     } while(newObjective < oldObjective && ++counter < 1000);
+    updateBestSolution(currentSolution);
 }
 
 void Solver::explorationStep() {
@@ -158,7 +159,6 @@ void Solver::trySwapping() {
     currentSolution->scheduleJobs();
     long newObjective = currentSolution->getObjective();
     if(acceptMove(oldObjective, newObjective)) {
-        oldObjective = newObjective;
         //cout << "Job " << index1 << " swapped with job " << index2 << endl;
     } else {
         // Turn back
@@ -199,7 +199,6 @@ void Solver::tryChangeMachine() {
     } while(currentSolution->getObjective() < newObjective);
     if(acceptMove(oldObjective, newObjective)) {
         //cout << "Job " << j->getId() << " moved from machine " << oldMachineId << " to machine " << machineId << endl;
-        oldObjective = newObjective;
     } else {
         j->setMachine(currentSolution->getMachines()[oldMachineId]);
         currentSolution->resetJobPositionInMachine(j);
@@ -211,7 +210,6 @@ void Solver::updateSolution() {
     explorationStep();
     localSearch();
     updateTemp();
-    updateBestSolution(currentSolution);
 }
 
 

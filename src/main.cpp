@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
         end = std::chrono::system_clock::now();
         elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
         // cout << "elapsed time: " << elapsed_ms << "ms\n";
-        //cout << "Current Best solution: " << solver.getBestSolution()->getObjective() << endl;
+        cout << "Current Best solution: " << solver.getBestSolution()->getObjective() << endl;
     }
 
     solver.getBestSolution()->scheduleJobs();
